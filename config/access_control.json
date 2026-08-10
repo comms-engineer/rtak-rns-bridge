@@ -1,0 +1,9 @@
+{
+  "require_signatures": true,
+  "authorized_siblings": [
+    "4a2c91b40c98f12110aef53123b0981a"
+  ],
+  "authorized_edge_nodes": [
+    "7e2a91b40c98f12110aef53123b0981d"
+  ]
+}
