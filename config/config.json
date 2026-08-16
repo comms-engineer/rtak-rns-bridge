@@ -1,0 +1,21 @@
+{
+  "node_type": "edge",
+  "callsign": "PHANTOM-GATEWAY-01",
+  "default_group": "Team Cyan",
+  "tcp_listener": {
+    "host": "0.0.0.0",
+    "port": 8087
+  },
+  "reticulum": {
+    "config_dir": "/etc/reticulum",
+    "identity_keyfile": "/etc/reticulum/identity.key"
+  },
+  "telemetry_filter": {
+    "min_distance_meters": 30.0,
+    "max_heartbeat_seconds": 300,
+    "purge_stale_queue_on_reconnect": true
+  },
+  "database": {
+    "sqlite_path": "data/state.db"
+  }
+}

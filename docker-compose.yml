@@ -1,0 +1,21 @@
+services:
+  rnsd:
+    image: markqvist/reticulum:latest
+    container_name: phantom-rnsd
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config/reticulum:/root/.reticulum
+
+  rtak-bridge:
+    build: .
+    container_name: phantom-rtak-bridge
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - rnsd
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
