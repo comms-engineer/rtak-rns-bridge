@@ -70,7 +70,12 @@ def test_offline_breadcrumbs_collapse_to_the_latest_state() -> None:
     assert len(flushed) == 1
     assert flushed[0][F_LAT] == pytest.approx(offset_north(400.0))
     assert flushed[0][F_TIMESTAMP] == 1010
+
+    # Released payloads are held until the caller confirms they made it onto the air.
+    assert queue.pending == 1
+    queue.ack("UID-01")
     assert queue.pending == 0
+    assert queue.flush() == []
 
 
 def test_reconnect_purges_state_older_than_the_heartbeat_window() -> None:

@@ -82,7 +82,7 @@ class QueueManager:
         return True
 
     def ack(self, uid: str) -> None:
-        """Drop the pending payload for a UID that was transmitted outside `flush`."""
+        """Drop the pending payload for a UID once it has actually been transmitted."""
         self._outbound.pop(uid, None)
 
     def set_online(self, online: bool) -> None:
@@ -90,14 +90,14 @@ class QueueManager:
         self.online = online
 
     def flush(self) -> list[dict[int, Any]]:
-        """Drain the queue, newest state per UID, and hand it to the caller."""
+        """Release the queue, newest state per UID, oldest first.
+
+        Payloads stay queued until the caller `ack`s them: a send that fails because the
+        hub has no path yet must not cost the track its last known position.
+        """
         if not self.online:
             return []
-        pending = sorted(
-            self._outbound.values(), key=lambda payload: int(payload.get(F_TIMESTAMP, 0))
-        )
-        self._outbound.clear()
-        return pending
+        return sorted(self._outbound.values(), key=lambda payload: int(payload.get(F_TIMESTAMP, 0)))
 
     def purge(self) -> None:
         """Drop every pending payload without transmitting it."""

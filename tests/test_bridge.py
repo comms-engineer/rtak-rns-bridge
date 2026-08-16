@@ -158,6 +158,22 @@ def test_offline_transport_marks_the_queue_down(
     assert bridge.flush_queue(now=event_epoch + 10) == 1
 
 
+def test_queued_state_survives_a_failed_flush(
+    bridge: EdgeBridge, position_cot: str, event_epoch: int
+) -> None:
+    """A hub with no path yet must not cost the track its last known position."""
+    bridge.transport.online = False
+    bridge.ingest(position_cot, now=1000.0)
+
+    assert bridge.flush_queue(now=event_epoch + 10) == 0
+    assert bridge.queue.pending == 1
+
+    bridge.transport.online = True
+    assert bridge.flush_queue(now=event_epoch + 20) == 1
+    assert bridge.queue.pending == 0
+    assert bridge.flush_queue(now=event_epoch + 30) == 0
+
+
 def test_state_dump_writes_cot_xml_to_a_connected_client(
     bridge: EdgeBridge, position_cot: str
 ) -> None:

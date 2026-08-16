@@ -218,8 +218,12 @@ class EdgeBridge:
             return 0
         sent = 0
         for fields in self.queue.reconnect(now=now):
-            if self.transport.send(self.default_destination, fields):
-                sent += 1
+            if not self.transport.send(self.default_destination, fields):
+                # No path to the hub yet: keep the payload for the next attempt.
+                self.queue.set_online(False)
+                break
+            self.queue.ack(str(fields.get(F_UID, "")))
+            sent += 1
         return sent
 
     async def handle_client(
@@ -230,7 +234,8 @@ class EdgeBridge:
         logger.info("TAK client connected: %s", peer)
         self.clients.add(writer)
         try:
-            await self.dump_state(writer)
+            if not writer.is_closing():
+                await self.dump_state(writer)
             buffer = b""
             while True:
                 chunk = await reader.read(4096)
