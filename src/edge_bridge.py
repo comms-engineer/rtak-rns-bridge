@@ -254,8 +254,10 @@ class EdgeBridge:
     async def dump_state(self, writer: asyncio.StreamWriter) -> int:
         """Replay the current picture to a freshly connected client. Returns events sent."""
         events = self.db.state_events()
-        for event in events:
-            writer.write(event.encode("utf-8") + b"\n")
+        if not events:
+            return 0
+        # One write: a client that has already gone away costs one warning, not one per track.
+        writer.write(b"".join(event.encode("utf-8") + b"\n" for event in events))
         await writer.drain()
         return len(events)
 
