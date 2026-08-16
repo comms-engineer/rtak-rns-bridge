@@ -34,7 +34,12 @@ def fields_hash(fields: dict[int, Any]) -> str:
 
 
 def geochat_uid(sender_uid: str, digest: str) -> str:
-    """Build the ATAK-visible GeoChat event UID: GeoChat.<SENDER_UID>.<HASH>."""
+    """Build the ATAK-visible GeoChat event UID: GeoChat.<SENDER_UID>.<HASH>.
+
+    ATAK already prefixes its own chat event UIDs, so the prefix is never doubled.
+    """
+    if sender_uid.startswith("GeoChat."):
+        return f"{sender_uid}.{digest}"
     return f"GeoChat.{sender_uid}.{digest}"
 
 

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import socket
+import struct
 import threading
+import time
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -132,6 +135,16 @@ def test_geochat_is_routed_to_the_resolved_group_hub(
     ]
 
 
+def test_transmitted_position_is_not_flushed_again(
+    bridge: EdgeBridge, position_cot: str, event_epoch: int
+) -> None:
+    assert bridge.ingest(position_cot, now=1000.0) is not None
+
+    assert bridge.queue.pending == 0
+    assert bridge.flush_queue(now=event_epoch + 10) == 0
+    assert len(bridge.transport.sent) == 1
+
+
 def test_offline_transport_marks_the_queue_down(
     bridge: EdgeBridge, position_cot: str, event_epoch: int
 ) -> None:
@@ -176,6 +189,51 @@ def test_state_dump_writes_cot_xml_to_a_connected_client(
     point = event.find("point")
     assert point is not None
     assert float(point.get("lat")) == pytest.approx(51.478)
+
+
+def test_state_dump_survives_a_client_that_hangs_up(
+    bridge: EdgeBridge, position_cot: str
+) -> None:
+    """The watchdog probes the listener every 10 s by connecting and closing immediately."""
+    bridge.ingest(position_cot, now=1000.0)
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    client = socket.create_connection(listener.getsockname())
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    server_side, _ = listener.accept()
+    client.close()
+
+    for _ in range(3):
+        assert bridge.db.dump_current_state_to_socket(server_side) >= 0
+
+    for handle in (server_side, listener):
+        handle.close()
+
+
+def test_async_client_handler_replays_state_and_ingests(
+    bridge: EdgeBridge, position_cot: str, make_position: Any, now_cot: str
+) -> None:
+    async def exercise() -> tuple[bytes, int]:
+        bridge.ingest(position_cot, now=1000.0)
+        server = await asyncio.start_server(bridge.handle_client, "127.0.0.1", 0)
+        host, port = server.sockets[0].getsockname()[:2]
+        reader, writer = await asyncio.open_connection(host, port)
+
+        replayed = await asyncio.wait_for(reader.readline(), timeout=5)
+        writer.write(make_position("UID-77", 40.0, -74.0, now_cot).encode("utf-8"))
+        await writer.drain()
+        await asyncio.sleep(0.1)
+        writer.close()
+        server.close()
+        await server.wait_closed()
+        return replayed, len(bridge.db.active_tracks(now=time.time()))
+
+    replayed, _ = asyncio.run(exercise())
+
+    assert ET.fromstring(replayed.decode("utf-8")).get("uid") == "ANDROID-352cba1f1234"
+    assert any(track.uid == "UID-77" for track in bridge.db.active_tracks(now=time.time()))
 
 
 def test_state_dump_skips_tracks_outside_the_catch_up_window(

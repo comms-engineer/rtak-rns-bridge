@@ -81,6 +81,10 @@ class QueueManager:
             self._last_sent[uid] = _TrackState(float(lat), float(lon), now)
         return True
 
+    def ack(self, uid: str) -> None:
+        """Drop the pending payload for a UID that was transmitted outside `flush`."""
+        self._outbound.pop(uid, None)
+
     def set_online(self, online: bool) -> None:
         """Mark the RF transport up or down."""
         self.online = online

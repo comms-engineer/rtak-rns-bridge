@@ -74,6 +74,12 @@ def event_epoch() -> int:
 
 
 @pytest.fixture
+def now_cot() -> str:
+    """A CoT timestamp attribute for the current clock."""
+    return cot_time(EVENT_EPOCH)
+
+
+@pytest.fixture
 def make_position() -> PositionFactory:
     """Factory for minimal position reports."""
     return position_xml

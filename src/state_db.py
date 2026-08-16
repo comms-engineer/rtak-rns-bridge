@@ -219,16 +219,10 @@ class StateDB:
         self._conn.commit()
         return removed
 
-    def dump_current_state_to_socket(
-        self,
-        socket_conn: socket.socket,
-        window_seconds: float = CATCH_UP_WINDOW_SECONDS,
-        now: float | None = None,
-    ) -> int:
-        """Write the current picture to a freshly connected TAK client as CoT XML.
-
-        Returns the number of events written.
-        """
+    def state_events(
+        self, window_seconds: float = CATCH_UP_WINDOW_SECONDS, now: float | None = None
+    ) -> list[str]:
+        """The current picture as CoT XML events, tracks first, then chat."""
         events = [track.to_xml() for track in self.active_tracks(window_seconds, now=now)]
         for message in self.recent_chat(window_seconds, now=now):
             events.append(
@@ -243,9 +237,27 @@ class StateDB:
                     }
                 )
             )
-        for event in events:
-            socket_conn.sendall(event.encode("utf-8") + b"\n")
-        return len(events)
+        return events
+
+    def dump_current_state_to_socket(
+        self,
+        socket_conn: socket.socket,
+        window_seconds: float = CATCH_UP_WINDOW_SECONDS,
+        now: float | None = None,
+    ) -> int:
+        """Write the current picture to a freshly connected TAK client as CoT XML.
+
+        Returns the number of events written. A client that hangs up mid-dump ends the
+        replay quietly: probes and impatient clients are routine, not failures.
+        """
+        written = 0
+        for event in self.state_events(window_seconds, now=now):
+            try:
+                socket_conn.sendall(event.encode("utf-8") + b"\n")
+            except OSError:
+                break
+            written += 1
+        return written
 
     def export_state(self, window_seconds: float = CATCH_UP_WINDOW_SECONDS) -> dict[str, Any]:
         """Snapshot for server-to-server synchronisation over an RNS Link."""

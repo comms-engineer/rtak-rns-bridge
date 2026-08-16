@@ -208,6 +208,8 @@ class EdgeBridge:
         if not self.transport.send(destination, fields):
             self.queue.set_online(False)
             return None
+        # The payload is already on the air, so the periodic flush must not repeat it.
+        self.queue.ack(str(fields.get(F_UID, "")))
         return fields
 
     def flush_queue(self, now: float | None = None) -> int:
@@ -228,11 +230,7 @@ class EdgeBridge:
         logger.info("TAK client connected: %s", peer)
         self.clients.add(writer)
         try:
-            sock = writer.get_extra_info("socket")
-            if sock is not None:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, self.db.dump_current_state_to_socket, sock
-                )
+            await self.dump_state(writer)
             buffer = b""
             while True:
                 chunk = await reader.read(4096)
@@ -242,11 +240,19 @@ class EdgeBridge:
                 events, buffer = split_events(buffer)
                 for event in events:
                     self.ingest(event)
-        except (ConnectionResetError, asyncio.IncompleteReadError):
+        except (OSError, asyncio.IncompleteReadError):
             logger.info("TAK client %s dropped", peer)
         finally:
             self.clients.discard(writer)
             writer.close()
+
+    async def dump_state(self, writer: asyncio.StreamWriter) -> int:
+        """Replay the current picture to a freshly connected client. Returns events sent."""
+        events = self.db.state_events()
+        for event in events:
+            writer.write(event.encode("utf-8") + b"\n")
+        await writer.drain()
+        return len(events)
 
     async def broadcast_xml(self, fields: dict[int, Any]) -> None:
         """Push an inbound LXMF payload back down to every connected TAK client."""
@@ -255,7 +261,7 @@ class EdgeBridge:
             try:
                 writer.write(payload)
                 await writer.drain()
-            except (ConnectionResetError, BrokenPipeError):
+            except OSError:
                 self.clients.discard(writer)
 
     def handle_inbound_lxmf(self, message: Any) -> None:

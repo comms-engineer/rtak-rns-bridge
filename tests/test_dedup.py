@@ -53,9 +53,11 @@ def test_tag_formats_the_geochat_uid(geochat_cot: str) -> None:
     tag = engine.tag(fields)
 
     head, digest = tag.rsplit(".", 1)
-    assert head == f"GeoChat.{fields[F_UID]}"
+    # ATAK chat UIDs are already GeoChat-prefixed, and the prefix is not doubled.
+    assert head == str(fields[F_UID])
     assert len(digest) == 64
     assert tag == geochat_uid(str(fields[F_UID]), digest)
+    assert geochat_uid("ANDROID-352cba1f1234", digest) == f"GeoChat.ANDROID-352cba1f1234.{digest}"
 
 
 def test_expired_entries_are_evicted_from_the_window() -> None:
