@@ -91,8 +91,9 @@ def test_rebuilt_event_is_valid_cot_xml(position_cot: str) -> None:
 
     assert event.tag == "event"
     assert event.get("version") == "2.0"
-    assert event.get("time") == "2026-08-10T12:00:00.000Z"
-    assert event.get("stale") == "2026-08-10T12:05:00.000Z"
+    source = ET.fromstring(position_cot)
+    assert event.get("time") == source.get("time")
+    assert event.get("stale") == source.get("stale")
 
 
 def test_non_event_root_is_rejected() -> None:

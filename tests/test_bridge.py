@@ -16,7 +16,6 @@ from src.cot_converter import F_CALLSIGN, F_LAT, F_TEXT, F_UID, unpack_fields
 from src.edge_bridge import EdgeBridge, split_events
 from src.group_resolver import GroupResolutionError, GroupResolver, parse_group_target
 from src.state_db import StateDB
-from tests.conftest import position_xml
 
 GROUPS = {
     "Team Cyan": "7e2a91b40c98f12110aef53123b0981d",
@@ -24,8 +23,6 @@ GROUPS = {
 }
 EDGE_HASH = "7e2a91b40c98f12110aef53123b0981d"
 SIBLING_HASH = "4a2c91b40c98f12110aef53123b0981a"
-# Epoch of the 2026-08-10T12:00:00Z timestamp carried by the fixture events.
-EVENT_EPOCH = 1_786_363_200
 
 
 class FakeTransport:
@@ -112,9 +109,9 @@ def test_duplicate_event_is_dropped(bridge: EdgeBridge, position_cot: str) -> No
     assert len(bridge.transport.sent) == 1
 
 
-def test_throttled_position_is_not_transmitted(bridge: EdgeBridge) -> None:
-    first = position_xml("UID-01", 51.478, -0.0014, "2026-08-10T12:00:00.000Z")
-    nudged = position_xml("UID-01", 51.4780449, -0.0014, "2026-08-10T12:00:10.000Z")
+def test_throttled_position_is_not_transmitted(bridge: EdgeBridge, make_position: Any) -> None:
+    first = make_position("UID-01", 51.478, -0.0014, "2026-08-10T12:00:00.000Z")
+    nudged = make_position("UID-01", 51.4780449, -0.0014, "2026-08-10T12:00:10.000Z")
 
     assert bridge.ingest(first, now=1000.0) is not None
     assert bridge.ingest(nudged, now=1010.0) is None
@@ -135,27 +132,30 @@ def test_geochat_is_routed_to_the_resolved_group_hub(
     ]
 
 
-def test_offline_transport_marks_the_queue_down(bridge: EdgeBridge, position_cot: str) -> None:
+def test_offline_transport_marks_the_queue_down(
+    bridge: EdgeBridge, position_cot: str, event_epoch: int
+) -> None:
     bridge.transport.online = False
 
     assert bridge.ingest(position_cot, now=1000.0) is None
     assert bridge.queue.online is False
 
     bridge.transport.online = True
-    queued = bridge.queue.pending
-    assert queued == 1
-    assert bridge.flush_queue(now=EVENT_EPOCH + 10) == 1
+    assert bridge.queue.pending == 1
+    assert bridge.flush_queue(now=event_epoch + 10) == 1
 
 
 def test_state_dump_writes_cot_xml_to_a_connected_client(
     bridge: EdgeBridge, position_cot: str
 ) -> None:
+    """A late-joining TAK client is handed the current picture the moment it connects."""
     bridge.ingest(position_cot, now=1000.0)
 
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
     client = socket.create_connection(listener.getsockname())
+    client.settimeout(5)
     server_side, _ = listener.accept()
 
     written: list[int] = []
@@ -179,17 +179,17 @@ def test_state_dump_writes_cot_xml_to_a_connected_client(
 
 
 def test_state_dump_skips_tracks_outside_the_catch_up_window(
-    bridge: EdgeBridge, position_cot: str
+    bridge: EdgeBridge, position_cot: str, event_epoch: int
 ) -> None:
     bridge.ingest(position_cot, now=1000.0)
 
-    assert bridge.db.active_tracks(now=EVENT_EPOCH + 60) != []
-    assert bridge.db.active_tracks(now=EVENT_EPOCH + 24 * 3600 + 60) == []
+    assert bridge.db.active_tracks(now=event_epoch + 60) != []
+    assert bridge.db.active_tracks(now=event_epoch + 24 * 3600 + 60) == []
 
 
-def test_split_events_handles_partial_and_batched_reads() -> None:
-    first = position_xml("UID-01", 51.478, -0.0014, "2026-08-10T12:00:00.000Z").encode()
-    second = position_xml("UID-02", 51.479, -0.0014, "2026-08-10T12:00:01.000Z").encode()
+def test_split_events_handles_partial_and_batched_reads(make_position: Any) -> None:
+    first = make_position("UID-01", 51.478, -0.0014, "2026-08-10T12:00:00.000Z").encode()
+    second = make_position("UID-02", 51.479, -0.0014, "2026-08-10T12:00:01.000Z").encode()
 
     events, remainder = split_events(first + second[:40])
     assert len(events) == 1
